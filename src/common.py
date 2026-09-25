@@ -77,3 +77,12 @@ def clean_addr(s, country=""):
 def addr_numbers(clean):
     """All numbers in the address (house no, PIN, unit) as a sorted string."""
     return " ".join(sorted(set(re.findall(r"\d+", clean))))
+
+def clean_df(df):
+    """Add cleaned columns to a source table: name, core, addr, nums."""
+    df = df.copy()
+    df["name"] = [clean_name(x) for x in df.business_name]
+    df["core"] = [core_name(x) for x in df["name"]]
+    df["addr"] = [clean_addr(a, c) for a, c in zip(df.business_address, df.country)]
+    df["nums"] = [addr_numbers(x) for x in df["addr"]]
+    return df

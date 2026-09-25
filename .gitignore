@@ -1,0 +1,9 @@
+﻿dataset/
+work/
+output/
+__MACOSX/
+*.pkl
+*.tsv
+*.zip
+.ipynb_checkpoints/
+__pycache__/

@@ -38,3 +38,25 @@ def write_tsv(pred_dict, s1_ids, path, col="matched_entity_ids"):
         rows.append((i, ",".join(dict.fromkeys(ids))))
     pd.DataFrame(rows, columns=["source1_entity_id", col]).to_csv(
         path, sep="\t", index=False, lineterminator="\n")
+
+def pairs_to_pred(pairs, threshold=0.5):
+    """pairs: DataFrame with columns s1_id, other_id, prob.
+    Keeps only the best S1 for each S2/S3 record (one-owner rule), then applies the threshold.
+    Returns dict {S1 id: [matched ids]}."""
+    best = pairs.sort_values("prob", ascending=False).drop_duplicates("other_id")
+    best = best[best.prob >= threshold]
+    return best.groupby("s1_id")["other_id"].apply(list).to_dict()
+
+def tune_threshold(pairs, truth, ids, thresholds=None):
+    """Try several thresholds on validation pairs and print the F0.5 of each.
+    Returns (best_threshold, best_score)."""
+    if thresholds is None:
+        thresholds = [x / 100 for x in range(30, 96, 5)]
+    best_t, best_s = None, -1
+    for t in thresholds:
+        s = f05_score(pairs_to_pred(pairs, t), truth, ids)
+        print(f"threshold {t:.2f} -> F0.5 {s:.4f}")
+        if s > best_s:
+            best_t, best_s = t, s
+    print("BEST:", best_t, round(best_s, 4))
+    return best_t, best_s

@@ -1,9 +1,10 @@
+import os
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sparse_dot_topn import sp_matmul_topn
 
-def tfidf_topk(s1c, qc, col, K, n_threads=4):
+def tfidf_topk(s1c, qc, col, K, n_threads=max(1, os.cpu_count() - 2)):
     """For each record in qc, find the K most similar S1 records (same country)
     by comparing column `col` in 3-letter pieces (TF-IDF).
     Returns columns: entity_id, s1_id, sim, rank."""

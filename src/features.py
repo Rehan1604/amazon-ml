@@ -87,13 +87,19 @@ def _num_feats(a, b):
     return res
 
 # ---------- main ----------
-def build_features(cands, s1c, qc):
+def build_features(cands, s1c, qc, keep_top=None):
     """For every candidate pair, compute similarity numbers the model learns from.
+    keep_top: if set, first keep only the N most promising candidates per record (much faster).
     Returns (table with entity_id, s1_id + features, list of feature names)."""
     q = qc[["entity_id", "core", "addr"]]
     s = s1c[["entity_id", "core", "addr"]].rename(columns={
         "entity_id": "s1_id", "core": "s1_core", "addr": "s1_addr"})
     d = cands[["entity_id", "s1_id"]].merge(q, on="entity_id").merge(s, on="s1_id")
+
+    if keep_top:   # quick pre-score, keep only the most promising candidates per record
+        pre = (_sim(d.core, d.s1_core, fuzz.token_set_ratio) + _sim(d.addr, d.s1_addr, fuzz.token_set_ratio))
+        d = d.assign(_pre=pre).sort_values(["entity_id", "_pre"], ascending=[True, False])
+        d = d[d.groupby("entity_id").cumcount() < keep_top].drop(columns="_pre").reset_index(drop=True)
 
     core = _map_unique(d.core, _norm_core)
     s1_core = _map_unique(d.s1_core, _norm_core)

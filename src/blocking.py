@@ -97,3 +97,62 @@ def generate_candidates_big(s1c, qc, out_prefix, k_name=10, k_addr=10,
             print(f"{c} rows {start:,}-{start + len(b):,}: {len(df):,} pairs, "
                   f"{round(time.time() - t)}s", flush=True)
     return files
+
+def keep_rarest(B, m):
+    """Keep only the m highest-weight (= rarest) pieces of each record."""
+    B = B.tocsr().copy()
+    ip, data = B.indptr, B.data
+    for i in range(B.shape[0]):
+        s, e = ip[i], ip[i + 1]
+        if e - s > m:
+            row = data[s:e]
+            cut = np.partition(row, e - s - m)[e - s - m]
+            row[row < cut] = 0
+    B.eliminate_zeros()
+    return B
+
+def _make_vec(kind):
+    if kind == "word":   # whole words; keep words seen once (e.g. house numbers)
+        return TfidfVectorizer(analyzer="word", token_pattern=r"(?u)\b\w+\b", min_df=1,
+                               sublinear_tf=True, dtype=np.float32)
+    return TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 3), min_df=2,
+                           sublinear_tf=True, dtype=np.float32)
+
+# (column, kind, how many rarest pieces/words to search with)
+FAST_SEARCHES = [("core", "char", 5), ("core", "word", 3), ("addr", "word", 4)]
+
+def generate_candidates_fast(s1c, qc, out_prefix, K=10, chunk=250_000, n_threads=N_THREADS):
+    """FINAL blocking: 3 fast searches (name pieces, name words, address words),
+    top-K each, combined. Works in chunks saved to disk. Returns file paths."""
+    files = []
+    for c in qc.country.unique():
+        a = s1c[s1c.country == c].reset_index(drop=True)
+        b_all = qc[qc.country == c].reset_index(drop=True)
+        if len(a) == 0 or len(b_all) == 0:
+            continue
+        fitted = []
+        for col, kind, m in FAST_SEARCHES:
+            vec = _make_vec(kind)
+            try:
+                A = vec.fit_transform(a[col])
+                fitted.append((vec, A.T.tocsr(), col, m))
+            except ValueError:
+                pass
+        for start in range(0, len(b_all), chunk):
+            t = time.time()
+            b = b_all.iloc[start:start + chunk]
+            parts = []
+            for vec, AT, col, m in fitted:
+                B = keep_rarest(vec.transform(b[col]), m)
+                C = sp_matmul_topn(B, AT, top_n=K, threshold=0.01, sort=True,
+                                   n_threads=n_threads).tocsr()
+                rows = np.repeat(np.arange(C.shape[0]), np.diff(C.indptr))
+                parts.append(pd.DataFrame({"entity_id": b.entity_id.values[rows],
+                                           "s1_id": a.entity_id.values[C.indices]}))
+            df = pd.concat(parts, ignore_index=True).drop_duplicates()
+            path = f"{out_prefix}_{c}_{start}.pkl"
+            df.to_pickle(path)
+            files.append(path)
+            print(f"{c} rows {start:,}-{start + len(b):,} of {len(b_all):,}: "
+                  f"{len(df):,} pairs, {round(time.time() - t)}s", flush=True)
+    return files

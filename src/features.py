@@ -26,8 +26,6 @@ def build_features(cands, s1c, qc):
 
     f = pd.DataFrame(index=d.index)
     # 1. Scores from the blocking step
-    for c in ["name_sim", "addr_sim", "name_rank", "addr_rank"]:
-        f[c] = d[c].astype(np.float32)
     # 2. Name similarity, several ways (each catches different differences)
     f["name_set"] = _sim(d.core, d.s1_core, fuzz.token_set_ratio)       # ignores extra words
     f["name_sort"] = _sim(d.core, d.s1_core, fuzz.token_sort_ratio)     # ignores word order
@@ -52,7 +50,7 @@ def build_features(cands, s1c, qc):
     f["is_s3"] = d.entity_id.str.startswith("S3").astype(np.int8)
     # 5. Compared with the OTHER candidates of the same record
     f["combo"] = f.name_set + f.addr_set
-    for c in ["name_set", "addr_set", "name_sim", "addr_sim", "combo"]:
+    for c in ["name_set", "addr_set", "name_jw", "addr_jac", "combo"]:
         f[c + "_gap"] = f.groupby(d.entity_id)[c].transform("max") - f[c]
     f["n_cands"] = d.groupby("entity_id")["entity_id"].transform("size").astype(np.float32)
 
